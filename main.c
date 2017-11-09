@@ -5,6 +5,9 @@
 #define OS_Windows
 #endif
 
+#ifdef OS_Windows
+#define _WIN32_WINNT 0x0501
+#endif
 /* Generic */
 #include <errno.h>
 #include <stdio.h>
@@ -13,17 +16,16 @@
 
 /* Network */
 #ifdef OS_Linux
-
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <openssl/ssl.h>
-
 #define error(x) error(x) //error printout
 #elif defined(OS_Windows)
 #include <winsock2.h>
-#include <stdint.h>
-#pragma comment(lib,"ws2_32.lib")
+#include <unistd.h>
+#include <openssl/ssl.h>
+#include <ws2tcpip.h>
 //Macros
 #define close(x) closesocket(x) //close socket
 #define error(x) printf("%s Error: %d", x, WSAGetLastError())   //error printout
@@ -35,13 +37,20 @@ char req[1000] = {0};
 
 // Get host information (used to establishConnection)
 struct addrinfo *getHostInfo(char *host, char *port) {
+    WSADATA wsa;
+    printf("Initializing WINSock...");
+    if(WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        error("wsainit");
+        exit(EXIT_FAILURE);
+    }
     int r;
     struct addrinfo hints, *getaddrinfo_res;
     // Setup hints
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    if ((r = getaddrinfo(host, port, &hints, &getaddrinfo_res))) {
+    hints.ai_protocol = IPPROTO_TCP;
+    if ((r = getaddrinfo(host, port, &hints, &getaddrinfo_res)) != 0) {
         char err[1024];
         sprintf(err, "[getHostInfo:getaddrinfo] %s\n", gai_strerror(r));
         error(err);
@@ -52,22 +61,36 @@ struct addrinfo *getHostInfo(char *host, char *port) {
 }
 
 // Establish connection with host
+#ifdef OS_Windows
+SOCKET establishConnection(struct addrinfo *info) {
+    if (info == NULL) return NULL;
+    SOCKET clientfd;
+    printf("Initialized!\n");
+    for (; info != NULL; info = info->ai_next) {
+        if ((clientfd = socket(info->ai_family,
+                               info->ai_socktype,
+                               info->ai_protocol)) < 0) {
+            error("[establishConnection:socket]");
+            continue;
+        }
+
+        if (connect(clientfd, info->ai_addr, info->ai_addrlen) < 0) {
+            close(clientfd);
+            error("[establishConnection:connect]");
+            continue;
+        }
+
+        freeaddrinfo(info);
+        return clientfd;
+    }
+
+    freeaddrinfo(info);
+    return NULL;
+}
+#elif defined(OS_Linux)
 int establishConnection(struct addrinfo *info) {
     if (info == NULL) return -1;
-#ifdef OS_Windows
-    //initializations for winsock
-    WSADATA wsa;
-    SOCKET clientfd;
-    printf("Initializing WINSock...");
-    if(WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        error("wsainit");
-        exit(EXIT_FAILURE);
-    }
-    printf("Initialized!\n");
-#elif defined(OS_Linux)
-    //initialisations for unix
     int clientfd;
-#endif
     for (; info != NULL; info = info->ai_next) {
         if ((clientfd = socket(info->ai_family,
                                info->ai_socktype,
@@ -89,6 +112,7 @@ int establishConnection(struct addrinfo *info) {
     freeaddrinfo(info);
     return -1;
 }
+#endif
 
 //Show certificate
 void ShowCerts(SSL *ssl) {
@@ -193,9 +217,13 @@ char *SSL_PUT(SSL *ssl, char *path, char *content) {
 
 int main(int argc, char **argv) {
     int https = 0;
+#ifdef OS_Windows
+    SOCKET clientfd;
+#elif defined(OS_Linux)
     int clientfd;
+#endif
     char buf[BUF_SIZE];
-    SSL_METHOD *method = TLS_client_method();
+    SSL_METHOD *method = TLSv1_client_method();
     SSL_CTX *ctx = SSL_CTX_new(method);
     SSL *ssl = SSL_new(ctx);
 
@@ -214,7 +242,7 @@ int main(int argc, char **argv) {
     if (clientfd == -1) {
         fprintf(stderr,
                 "Failed to connect to: %s:%s%s \n",
-                argv[1], argv[2], argv[4]);
+                argv[1], argv[2], argv[3]);
         return 3;
     }
 
