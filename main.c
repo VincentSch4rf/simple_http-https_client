@@ -245,7 +245,6 @@ int main(int argc, char **argv) {
             printf("Server reply:\n");
             read_ssl_response(ssl, buf);
         }
-        //Close SSL socket
         SSL_free(ssl);
     } else {
         if (strcmp(argv[3], "GET") == 0) {
@@ -268,8 +267,6 @@ int main(int argc, char **argv) {
             read_response(clientfd, buf);
         }
     }
-
-    //Close the socket
     close(clientfd);
 #ifdef OS_Windows
     WSACleanup();
