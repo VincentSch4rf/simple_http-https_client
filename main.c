@@ -115,7 +115,8 @@ void ShowCerts(SSL *ssl) {
         printf("Info: No client certificates configured.\n");
 }
 
-void read_ssl_response(SSL *ssl, char *buf) {
+int read_ssl_response(SSL *ssl, char *buf) {
+    int bytes_read = 0;
     while (1) {
         int bytes = SSL_read(ssl, buf, BUF_SIZE);
         if (bytes < 0) {
@@ -123,12 +124,15 @@ void read_ssl_response(SSL *ssl, char *buf) {
         } else if (bytes == 0) {
             break;
         }
+        bytes_read += bytes;
         fputs(buf, stdout);
         memset(buf, 0, BUF_SIZE);
     }
+    return bytes_read;
 }
 
-void read_response(int clientfd, char *buf) {
+int read_response(int clientfd, char *buf) {
+    int bytes_read = 0;
     while (1) {
         int bytes = read(clientfd, buf, BUF_SIZE);
         if (bytes < 0) {
@@ -136,6 +140,7 @@ void read_response(int clientfd, char *buf) {
         } else if (bytes == 0) {
             break;
         }
+        bytes_read += bytes;
         fputs(buf, stdout);
         memset(buf, 0, BUF_SIZE);
     }
@@ -143,34 +148,34 @@ void read_response(int clientfd, char *buf) {
 
 
 // Send GET request
-char *GET(int clientfd, char *path) {
+char *GET(int clientfd, char *path, char *host) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "GET %s HTTP/1.0\r\n\r\n", path);
+    sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, host);
     write(clientfd, req, strlen(req));
     return req;
 }
 
 // Send POST request
-char *POST(int clientfd, char *path, char *argument) {
+char *POST(int clientfd, char *path, char *host, char *argument) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "POST %s HTTP/1.0\r\n\r\n%s", path, argument);
+    sprintf(req, "POST %s HTTP/1.1\r\nHost: %s\r\n\r\n%s", path, host, argument);
     write(clientfd, req, strlen(req));
     return req;
 }
 
 
 // Send PUSH request
-char *PUT(int clientfd, char *path, char *content) {
+char *PUT(int clientfd, char *path, char *host, char *content) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "PUT %s HTTP/1.0\r\n\r\n %s", path, content);
+    sprintf(req, "PUT %s HTTP/1.1\r\nHost: %s\r\n\r\n %s", path, host, content);
     write(clientfd, req, strlen(req));
     return req;
 }
 
 // Send GET request over TSL
-char *SSL_GET(SSL *ssl, char *path) {
+char *SSL_GET(SSL *ssl, char *path, char *host) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "GET %s HTTP/1.0\r\n\r\n", path);
+    sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, host);
     if (SSL_write(ssl, req, strlen(req)) < 0) {
         fprintf(stderr, "SSL_ERROR: SSL_write");
     }
@@ -178,9 +183,9 @@ char *SSL_GET(SSL *ssl, char *path) {
 }
 
 // Send POST request over TSL
-char *SSL_POST(SSL *ssl, char *path, char *argument) {
+char *SSL_POST(SSL *ssl, char *path, char *host, char *argument) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "POST %s HTTP/1.0\r\n\r\n%s", path, argument);
+    sprintf(req, "POST %s HTTP/1.1\r\nHost: %s\r\n\r\n%s", path, host, argument);
     if (SSL_write(ssl, req, strlen(req)) < 0) {
         fprintf(stderr, "SSL_ERROR: SSL_write");
     }
@@ -188,9 +193,9 @@ char *SSL_POST(SSL *ssl, char *path, char *argument) {
 }
 
 // Send PUT request over TSL
-char *SSL_PUT(SSL *ssl, char *path, char *content) {
+char *SSL_PUT(SSL *ssl, char *path, char *host, char *content) {
     memset(req, 0, sizeof(req));
-    sprintf(req, "PUT %s HTTP/1.0\r\n\r\n %s", path, content);
+    sprintf(req, "PUT %s HTTP/1.1\r\nHost: %s\r\n\r\n %s", path, host, content);
     if (SSL_write(ssl, req, strlen(req)) < 0) {
         fprintf(stderr, "SSL_ERROR: SSL_write");
     }
@@ -234,44 +239,50 @@ int main(int argc, char **argv) {
         printf("Connected with cipher: %s!\n", SSL_get_cipher(ssl));
         if (strcmp(argv[3], "GET") == 0) {
             // Send SSL_GET request > stdout
-            char *request = SSL_GET(ssl, argv[4]);
-            printf("Send request: %sto server. Waiting for reply...\n", request);
+            char *request = SSL_GET(ssl, argv[4], argv[1]);
+            printf("Send request: %sto server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_ssl_response(ssl, buf);
+            int bytes = read_ssl_response(ssl, buf);
+            printf("Bytes read: %d", bytes);
         } else if (strcmp(argv[3], "POST") == 0) {
             // Send SSL_POST request > stdout
-            char *request = SSL_POST(ssl, argv[4], argv[5]);
-            printf("Send request: %sto server. Waiting for reply...\n", request);
+            char *request = SSL_POST(ssl, argv[4], argv[1], argv[5]);
+            printf("Send request: %sto server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_ssl_response(ssl, buf);
+            int bytes = read_ssl_response(ssl, buf);
+            printf("Bytes read: %d", bytes);
         } else if (strcmp(argv[3], "PUT") == 0) {
             // Send SSL_PUT request > stdout
-            char *request = SSL_PUT(ssl, argv[4], argv[5]);
-            printf("Send request: %sto server. Waiting for reply...\n", request);
+            char *request = SSL_PUT(ssl, argv[4], argv[1], argv[5]);
+            printf("Send request: %sto server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_ssl_response(ssl, buf);
+            int bytes = read_ssl_response(ssl, buf);
+            printf("Bytes read: %d", bytes);
         }
         // Close SSL connection
         SSL_free(ssl);
     } else {
         if (strcmp(argv[3], "GET") == 0) {
             // Send GET request > stdout
-            char *request = GET(clientfd, argv[4]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            char *request = GET(clientfd, argv[4], argv[1]);
+            printf("Send request: %s to server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_response(clientfd, buf);
+            int bytes = read_response(clientfd, buf);
+            printf("Bytes read: %d", bytes);
         } else if (strcmp(argv[3], "POST") == 0) {
             // Send POST request > stdout
-            char *request = POST(clientfd, argv[4], argv[5]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            char *request = POST(clientfd, argv[4], argv[1], argv[5]);
+            printf("Send request: %s to server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_response(clientfd, buf);
+            int bytes = read_response(clientfd, buf);
+            printf("Bytes read: %d", bytes);
         } else if (strcmp(argv[3], "PUT") == 0) {
             // Send PUT request > stdout
-            char *request = PUT(clientfd, argv[4], argv[5]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            char *request = PUT(clientfd, argv[4], argv[1], argv[5]);
+            printf("Send request: %s to server. Waiting for reply...\n\n", request);
             printf("Server reply:\n");
-            read_response(clientfd, buf);
+            int bytes = read_response(clientfd, buf);
+            printf("Bytes read: %d", bytes);
         }
     }
     // Close socket
