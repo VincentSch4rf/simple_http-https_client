@@ -5,28 +5,32 @@
 #define OS_Windows
 #endif
 
+#ifdef OS_Windows
+#define _WIN32_WINNT 0x0501
+#endif
 /* Generic */
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* Network */
-#ifdef OS_Linux
-
-#include <netdb.h>
-#include <sys/socket.h>
 #include <unistd.h>
 #include <openssl/ssl.h>
 
+/* Network */
+#ifdef OS_Linux
+#include <netdb.h>
+#include <sys/socket.h>
+//Macros
+#define SOCKET int
+#define SOCK_ERROR -1
 #define error(x) error(x) //error printout
 #elif defined(OS_Windows)
 #include <winsock2.h>
-#include <stdint.h>
-#pragma comment(lib,"ws2_32.lib")
+#include <ws2tcpip.h>
 //Macros
 #define close(x) closesocket(x) //close socket
 #define error(x) printf("%s Error: %d", x, WSAGetLastError())   //error printout
+#define SOCK_ERROR NULL
 #endif
 
 #define BUF_SIZE 100
@@ -35,13 +39,23 @@ char req[1000] = {0};
 
 // Get host information (used to establishConnection)
 struct addrinfo *getHostInfo(char *host, char *port) {
+    //Initialize WSA for Windows
+#ifdef OS_Windows
+    WSADATA wsa;
+    printf("Initializing WINSock...");
+    if(WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+        error("wsainit");
+        exit(EXIT_FAILURE);
+    }
+#endif
     int r;
     struct addrinfo hints, *getaddrinfo_res;
     // Setup hints
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    if ((r = getaddrinfo(host, port, &hints, &getaddrinfo_res))) {
+    hints.ai_protocol = IPPROTO_TCP;
+    if ((r = getaddrinfo(host, port, &hints, &getaddrinfo_res)) != 0) {
         char err[1024];
         sprintf(err, "[getHostInfo:getaddrinfo] %s\n", gai_strerror(r));
         error(err);
@@ -52,22 +66,10 @@ struct addrinfo *getHostInfo(char *host, char *port) {
 }
 
 // Establish connection with host
-int establishConnection(struct addrinfo *info) {
-    if (info == NULL) return -1;
-#ifdef OS_Windows
-    //initializations for winsock
-    WSADATA wsa;
+SOCKET establishConnection(struct addrinfo *info) {
+    if (info == NULL) return SOCK_ERROR;
     SOCKET clientfd;
-    printf("Initializing WINSock...");
-    if(WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-        error("wsainit");
-        exit(EXIT_FAILURE);
-    }
     printf("Initialized!\n");
-#elif defined(OS_Linux)
-    //initialisations for unix
-    int clientfd;
-#endif
     for (; info != NULL; info = info->ai_next) {
         if ((clientfd = socket(info->ai_family,
                                info->ai_socktype,
@@ -87,7 +89,7 @@ int establishConnection(struct addrinfo *info) {
     }
 
     freeaddrinfo(info);
-    return -1;
+    return SOCK_ERROR;
 }
 
 //Show certificate
@@ -100,10 +102,14 @@ void ShowCerts(SSL *ssl) {
         printf("Server certificates:\n");
         line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
         printf("Subject: %s\n", line);
+#ifdef OS_Linux
         free(line);       /* free the malloc'ed string */
+#endif
         line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
         printf("Issuer: %s\n", line);
+#ifdef OS_Linux
         free(line);       /* free the malloc'ed string */
+#endif
         X509_free(cert);     /* free the malloc'ed certificate copy */
     } else
         printf("Info: No client certificates configured.\n");
@@ -193,7 +199,7 @@ char *SSL_PUT(SSL *ssl, char *path, char *content) {
 
 int main(int argc, char **argv) {
     int https = 0;
-    int clientfd;
+    SOCKET clientfd;
     char buf[BUF_SIZE];
     SSL_METHOD *method = TLS_client_method();
     SSL_CTX *ctx = SSL_CTX_new(method);
@@ -214,7 +220,7 @@ int main(int argc, char **argv) {
     if (clientfd == -1) {
         fprintf(stderr,
                 "Failed to connect to: %s:%s%s \n",
-                argv[1], argv[2], argv[4]);
+                argv[1], argv[2], argv[3]);
         return 3;
     }
 
@@ -229,19 +235,19 @@ int main(int argc, char **argv) {
         if (strcmp(argv[3], "GET") == 0) {
             // Send SSL_GET request > stdout
             char *request = SSL_GET(ssl, argv[4]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            printf("Send request: %sto server. Waiting for reply...\n", request);
             printf("Server reply:\n");
             read_ssl_response(ssl, buf);
         } else if (strcmp(argv[3], "POST") == 0) {
             // Send SSL_POST request > stdout
             char *request = SSL_POST(ssl, argv[4], argv[5]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            printf("Send request: %sto server. Waiting for reply...\n", request);
             printf("Server reply:\n");
             read_ssl_response(ssl, buf);
         } else if (strcmp(argv[3], "PUT") == 0) {
             // Send SSL_PUT request > stdout
             char *request = SSL_PUT(ssl, argv[4], argv[5]);
-            printf("Send request: %s to server. Waiting for reply...\n", request);
+            printf("Send request: %sto server. Waiting for reply...\n", request);
             printf("Server reply:\n");
             read_ssl_response(ssl, buf);
         }
