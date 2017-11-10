@@ -22,7 +22,7 @@
 #include <sys/socket.h>
 //Macros
 #define SOCKET int
-#define SOCK_ERROR -1
+#define SOCK_ERROR '-1'
 #define error(x) error(x) //error printout
 #elif defined(OS_Windows)
 #include <winsock2.h>
