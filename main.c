@@ -172,7 +172,7 @@ char *PUT(int clientfd, char *path, char *host, char *content) {
     return req;
 }
 
-// Send GET request over TSL
+// Send GET request over TLS
 char *SSL_GET(SSL *ssl, char *path, char *host) {
     memset(req, 0, sizeof(req));
     sprintf(req, "GET %s HTTP/1.1\r\nHost: %s\r\n\r\n", path, host);
@@ -182,7 +182,7 @@ char *SSL_GET(SSL *ssl, char *path, char *host) {
     return req;
 }
 
-// Send POST request over TSL
+// Send POST request over TLS
 char *SSL_POST(SSL *ssl, char *path, char *host, char *argument) {
     memset(req, 0, sizeof(req));
     sprintf(req, "POST %s HTTP/1.1\r\nHost: %s\r\n\r\n%s", path, host, argument);
@@ -192,7 +192,7 @@ char *SSL_POST(SSL *ssl, char *path, char *host, char *argument) {
     return req;
 }
 
-// Send PUT request over TSL
+// Send PUT request over TLS
 char *SSL_PUT(SSL *ssl, char *path, char *host, char *content) {
     memset(req, 0, sizeof(req));
     sprintf(req, "PUT %s HTTP/1.1\r\nHost: %s\r\n\r\n %s", path, host, content);
