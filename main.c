@@ -3,6 +3,8 @@
 #define OS_Linux
 #elif defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #define OS_Windows
+#elif defined(__APPLE__)
+#define OS_Mac
 #endif
 
 #ifdef OS_Windows
@@ -24,6 +26,13 @@
 #define SOCKET int
 #define SOCK_ERROR '-1'
 #define error(x) error(x) //error printout
+#elif defined(OS_Mac)
+#include <netdb.h>
+#include <sys/socket.h>
+//Macros
+#define SOCKET int
+#define SOCK_ERROR '-1'
+#define error(x) puts(x) //error printout
 #elif defined(OS_Windows)
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -58,7 +67,7 @@ struct addrinfo *getHostInfo(char *host, char *port) {
     if ((r = getaddrinfo(host, port, &hints, &getaddrinfo_res)) != 0) {
         char err[1024];
         sprintf(err, "[getHostInfo:getaddrinfo] %s\n", gai_strerror(r));
-        error(err);
+        //error(err);
         return NULL;
     }
 
@@ -74,13 +83,13 @@ SOCKET establishConnection(struct addrinfo *info) {
         if ((clientfd = socket(info->ai_family,
                                info->ai_socktype,
                                info->ai_protocol)) < 0) {
-            error("[establishConnection:socket]");
+            //error("[establishConnection:socket]");
             continue;
         }
 
         if (connect(clientfd, info->ai_addr, info->ai_addrlen) < 0) {
             close(clientfd);
-            error("[establishConnection:connect]");
+            //error("[establishConnection:connect]");
             continue;
         }
 
@@ -102,12 +111,12 @@ void ShowCerts(SSL *ssl) {
         printf("Server certificates:\n");
         line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
         printf("Subject: %s\n", line);
-#ifdef OS_Linux
+#if defined(OS_Linux) || defined(OS_Mac)
         free(line);       /* free the malloc'ed string */
 #endif
         line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
         printf("Issuer: %s\n", line);
-#ifdef OS_Linux
+#if defined(OS_Linux) || defined(OS_Mac)
         free(line);       /* free the malloc'ed string */
 #endif
         X509_free(cert);     /* free the malloc'ed certificate copy */
@@ -120,7 +129,7 @@ int read_ssl_response(SSL *ssl, char *buf) {
     while (1) {
         int bytes = SSL_read(ssl, buf, BUF_SIZE);
         if (bytes < 0) {
-            error("SSL_read");
+            //error("SSL_read");
         } else if (bytes == 0) {
             break;
         }
@@ -136,7 +145,7 @@ int read_response(int clientfd, char *buf) {
     while (1) {
         int bytes = read(clientfd, buf, BUF_SIZE);
         if (bytes < 0) {
-            error("read");
+            //error("read");
         } else if (bytes == 0) {
             break;
         }
@@ -206,7 +215,9 @@ int main(int argc, char **argv) {
     int https = 0;
     SOCKET clientfd;
     char buf[BUF_SIZE];
-    SSL_METHOD *method = TLS_client_method();
+    OPENSSL_add_all_algorithms_conf();
+    SSL_library_init();
+    SSL_METHOD *method = TLSv1_2_client_method();
     SSL_CTX *ctx = SSL_CTX_new(method);
     SSL *ssl = SSL_new(ctx);
 
