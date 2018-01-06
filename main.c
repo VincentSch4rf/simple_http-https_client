@@ -215,9 +215,14 @@ int main(int argc, char **argv) {
     int https = 0;
     SOCKET clientfd;
     char buf[BUF_SIZE];
-    OPENSSL_add_all_algorithms_conf();
-    SSL_library_init();
-    SSL_METHOD *method = TLSv1_2_client_method();
+    SSL_METHOD *method;
+    if(SSLEAY_VERSION_NUMBER < 0x1010007fL) {
+        OPENSSL_add_all_algorithms_conf();
+        SSL_library_init();
+        method = TLSv1_2_client_method();
+    } else {
+        method = TLS_client_method();
+    }
     SSL_CTX *ctx = SSL_CTX_new(method);
     SSL *ssl = SSL_new(ctx);
 
